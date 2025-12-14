@@ -1,0 +1,101 @@
+INSTALL METALLB ON KUBERNETES CLUSTER
+
+STEP 1 – IDENTIFY NETWORK AND CHOOSE IP RANGE
+
+Check VM private IP:
+ip a
+
+Example:
+eth0: 10.0.0.4/24
+
+Subnet is:
+10.0.0.0/24
+
+Choose unused IP range in SAME subnet.
+Example:
+10.0.0.240 – 10.0.0.250
+
+Rules:
+	•	Must be in same subnet
+	•	Must not be used by Azure
+	•	Must be private IPs
+
+STEP 2 – INSTALL METALLB
+
+Apply MetalLB manifests:
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+Wait for pods:
+kubectl get pods -n metallb-system
+
+Expected:
+controller = Running
+speaker = Running
+
+STEP 3 – CREATE IP ADDRESS POOL
+
+Create file:
+nano metallb-ip-pool.yaml
+
+Paste (CHANGE IP RANGE IF NEEDED):
+
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+name: azure-pool
+namespace: metallb-system
+spec:
+addresses:
+	•	10.0.0.240-10.0.0.250
+
+Apply:
+kubectl apply -f metallb-ip-pool.yaml
+
+STEP 4 – ENABLE LAYER 2 ADVERTISEMENT
+
+Create file:
+nano metallb-l2.yaml
+
+Paste:
+
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+name: l2
+namespace: metallb-system
+spec:
+ipAddressPools:
+	•	azure-pool
+
+Apply:
+kubectl apply -f metallb-l2.yaml
+
+STEP 5 – DEPLOY TEST APPLICATION (NGINX)
+
+Create deployment:
+kubectl create deployment nginx –image=nginx
+
+Expose service as LoadBalancer:
+kubectl expose deployment nginx –port=80 –type=LoadBalancer
+
+STEP 6 – VERIFY LOAD BALANCER IP
+
+Run:
+kubectl get svc
+
+Expected output:
+nginx   LoadBalancer   CLUSTER-IP   EXTERNAL-IP   80:PORT/TCP
+
+Example:
+EXTERNAL-IP = 10.0.0.240
+
+STEP 7 – TEST ACCESS
+
+From VM:
+curl http://10.0.0.240
+
+You should see:
+Welcome to nginx!
+
+From browser (same VNet or VPN):
+http://10.0.0.240
