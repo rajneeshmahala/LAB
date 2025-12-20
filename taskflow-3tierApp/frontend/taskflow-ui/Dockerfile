@@ -4,13 +4,13 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Copy package files
-COPY taskflow-ui/package*.json ./
+COPY  package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy source code
-COPY taskflow-ui/ .
+COPY . .
 
 # Build frontend
 RUN npm run build
