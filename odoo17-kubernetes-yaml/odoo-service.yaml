@@ -4,10 +4,10 @@ metadata:
   name: odoo
   namespace: odoo
 spec:
-  type: NodePort
+  type: loadBalancer
   selector:
     app: odoo
   ports:
     - port: 8069
       targetPort: 8069
-      nodePort: 30069
+      
