@@ -26,9 +26,9 @@ kind: Service
 metadata:
   name: todo-ui
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: todo-ui
   ports:
     - port: 3000
-      nodePort: 30050
+      targetPort: 3000
