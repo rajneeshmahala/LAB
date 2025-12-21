@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-ui
+  template:
+    metadata:
+      labels:
+        app: todo-ui
+    spec:
+      containers:
+      - name: todo-ui
+        image: ghcr.io/somerepo/react-todo-ui:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_URL
+          value: mongodb://mongo:27017/todos
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-ui
+spec:
+  type: NodePort
+  selector:
+    app: todo-ui
+  ports:
+    - port: 3000
+      nodePort: 30050
