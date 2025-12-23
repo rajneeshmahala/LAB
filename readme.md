@@ -1,4 +1,4 @@
-# Copilot Instructions
+# Devx Instructions
 
 This is a Terraform project for provisioning Ubuntu VMs on Proxmox infrastructure.
 
