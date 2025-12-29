@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ubuntu-vm-lb
+spec:
+  type: LoadBalancer
+  selector:
+    kubevirt.io/domain: ubuntu-vm
+  ports:
+    - protocol: TCP
+      port: 22
+      targetPort: 22
