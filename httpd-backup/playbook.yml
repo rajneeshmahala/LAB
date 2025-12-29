@@ -1,0 +1,93 @@
+---
+- name: Backup Proxmox VM running httpd
+  hosts: localhost
+  become: false
+  vars:
+    proxmox_host: "{{ proxmox_host | default('pve.example.com') }}"
+    proxmox_user: "{{ proxmox_user | default('root@pam') }}"
+    proxmox_password: "{{ proxmox_password | default('changeme') }}"
+    vm_id: "{{ vm_id | default('101') }}"
+    backup_storage: "{{ backup_storage | default('local') }}"
+    backup_mode: "{{ backup_mode | default('snapshot') }}"
+    backup_compress: "{{ backup_compress | default('zstd') }}"
+    httpd_vm_ip: "{{ httpd_vm_ip | default('192.168.1.100') }}"
+    httpd_vm_user: "{{ httpd_vm_user | default('root') }}"
+    httpd_service_name: "{{ httpd_service_name | default('httpd') }}"
+    stop_httpd: "{{ stop_httpd | default(true) }}"
+    
+  tasks:
+    - name: Display backup information
+      debug:
+        msg:
+          - "Starting backup of VM {{ vm_id }}"
+          - "Proxmox Host: {{ proxmox_host }}"
+          - "HTTPD VM IP: {{ httpd_vm_ip }}"
+          - "Backup Mode: {{ backup_mode }}"
+
+    - name: Stop httpd service on VM (if enabled)
+      when: stop_httpd | bool
+      delegate_to: "{{ httpd_vm_ip }}"
+      become: true
+      vars:
+        ansible_host: "{{ httpd_vm_ip }}"
+        ansible_user: "{{ httpd_vm_user }}"
+      service:
+        name: "{{ httpd_service_name }}"
+        state: stopped
+      ignore_errors: true
+
+    - name: Create Proxmox VM backup using vzdump
+      delegate_to: "{{ proxmox_host }}"
+      become: true
+      vars:
+        ansible_host: "{{ proxmox_host }}"
+        ansible_user: "{{ proxmox_user.split('@')[0] }}"
+      shell: |
+        vzdump {{ vm_id }} \
+          --mode {{ backup_mode }} \
+          --compress {{ backup_compress }} \
+          --storage {{ backup_storage }} \
+          --mailto root \
+          --quiet 1
+      register: vzdump_result
+      changed_when: "'creating archive' in vzdump_result.stdout or 'creating archive' in vzdump_result.stderr"
+      failed_when: 
+        - vzdump_result.rc != 0
+        - "'ERROR' in vzdump_result.stderr"
+        - "'error' in vzdump_result.stderr | lower"
+
+    - name: Display backup result
+      debug:
+        var: vzdump_result.stdout_lines
+
+    - name: Get latest backup file
+      delegate_to: "{{ proxmox_host }}"
+      become: true
+      vars:
+        ansible_host: "{{ proxmox_host }}"
+        ansible_user: "{{ proxmox_user.split('@')[0] }}"
+      shell: |
+        ls -t /var/lib/vz/dump/vzdump-qemu-{{ vm_id }}-*.vma.* 2>/dev/null | head -1 || echo ""
+      register: latest_backup
+      changed_when: false
+
+    - name: Display latest backup file
+      debug:
+        msg: "Latest backup: {{ latest_backup.stdout }}"
+
+    - name: Start httpd service on VM (if it was stopped)
+      when: stop_httpd | bool
+      delegate_to: "{{ httpd_vm_ip }}"
+      become: true
+      vars:
+        ansible_host: "{{ httpd_vm_ip }}"
+        ansible_user: "{{ httpd_vm_user }}"
+      service:
+        name: "{{ httpd_service_name }}"
+        state: started
+      ignore_errors: true
+
+    - name: Backup completed successfully
+      debug:
+        msg: "VM {{ vm_id }} backup completed successfully"
+

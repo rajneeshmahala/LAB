@@ -1,0 +1,27 @@
+---
+# Global variables for all hosts
+
+# Proxmox settings
+proxmox_host: "pve1"
+proxmox_user: "root@pam"
+# proxmox_password: "changeme"  # Set via ansible-vault or environment variable
+
+# VM backup settings
+vm_id: "101"
+backup_storage: "local"
+backup_mode: "snapshot"  # Options: stop, suspend, snapshot
+backup_compress: "zstd"  # Options: gzip, zstd, lzo
+
+# HTTPD VM settings
+httpd_vm_ip: "192.168.1.100"
+httpd_vm_user: "root"
+httpd_service_name: "httpd"  # Use "apache2" for Debian/Ubuntu
+stop_httpd: true  # Whether to stop httpd before VM backup
+
+# HTTPD config backup settings
+backup_base_dir: "/var/backups/httpd"
+apache_conf_dir: "/etc/httpd"  # Use "/etc/apache2" for Debian/Ubuntu
+apache_log_dir: "/var/log/httpd"  # Use "/var/log/apache2" for Debian/Ubuntu
+include_logs: false
+retention_days: 30
+

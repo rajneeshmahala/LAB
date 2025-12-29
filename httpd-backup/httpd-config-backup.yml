@@ -1,0 +1,128 @@
+---
+- name: Backup Apache httpd configuration files
+  hosts: httpd_vms
+  become: true
+  vars:
+    backup_base_dir: "{{ backup_base_dir | default('/var/backups/httpd') }}"
+    apache_conf_dir: "{{ apache_conf_dir | default('/etc/httpd') }}"
+    apache_log_dir: "{{ apache_log_dir | default('/var/log/httpd') }}"
+    include_logs: "{{ include_logs | default(false) }}"
+    retention_days: "{{ retention_days | default(30) }}"
+    
+  tasks:
+    - name: Detect Apache service name
+      shell: |
+        if systemctl list-units --type=service | grep -q httpd.service; then
+          echo "httpd"
+        elif systemctl list-units --type=service | grep -q apache2.service; then
+          echo "apache2"
+        else
+          echo "httpd"
+        fi
+      register: detected_service
+      changed_when: false
+
+    - name: Detect Apache config directory
+      shell: |
+        if [ -d /etc/httpd ]; then
+          echo "/etc/httpd"
+        elif [ -d /etc/apache2 ]; then
+          echo "/etc/apache2"
+        else
+          echo "/etc/httpd"
+        fi
+      register: detected_conf_dir
+      changed_when: false
+
+    - name: Set Apache config directory
+      set_fact:
+        apache_conf_dir: "{{ detected_conf_dir.stdout }}"
+        httpd_service_name: "{{ detected_service.stdout }}"
+
+    - name: Ensure backup directory exists
+      file:
+        path: "{{ backup_base_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Create timestamped backup directory
+      file:
+        path: "{{ backup_base_dir }}/{{ ansible_date_time.epoch }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      register: backup_dir
+
+    - name: Backup Apache configuration files
+      archive:
+        path: "{{ apache_conf_dir }}"
+        dest: "{{ backup_dir.path }}/httpd-config-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+        format: gz
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Backup Apache virtual hosts (if separate directory exists)
+      when: 
+        - (apache_conf_dir == "/etc/httpd" and ansible_facts['os_family'] == "RedHat") or
+          (apache_conf_dir == "/etc/apache2" and ansible_facts['os_family'] == "Debian")
+      block:
+        - name: Backup httpd vhosts (RHEL/CentOS)
+          when: apache_conf_dir == "/etc/httpd"
+          archive:
+            path: /etc/httpd/conf.d
+            dest: "{{ backup_dir.path }}/httpd-vhosts-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+            format: gz
+          ignore_errors: true
+
+        - name: Backup apache2 sites (Debian/Ubuntu)
+          when: apache_conf_dir == "/etc/apache2"
+          archive:
+            path: /etc/apache2/sites-available
+            dest: "{{ backup_dir.path }}/apache2-sites-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+            format: gz
+          ignore_errors: true
+
+    - name: Backup Apache logs (optional)
+      when: include_logs | bool
+      archive:
+        path: "{{ apache_log_dir }}"
+        dest: "{{ backup_dir.path }}/httpd-logs-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+        format: gz
+        exclude_path:
+          - "*.gz"
+          - "*.log.*"
+      ignore_errors: true
+
+    - name: Create backup manifest
+      copy:
+        content: |
+          Backup Date: {{ ansible_date_time.iso8601 }}
+          Hostname: {{ ansible_hostname }}
+          Apache Config Dir: {{ apache_conf_dir }}
+          Apache Service: {{ httpd_service_name }}
+          OS Family: {{ ansible_facts['os_family'] }}
+          OS Version: {{ ansible_facts['os_version'] }}
+        dest: "{{ backup_dir.path }}/manifest.txt"
+        mode: "0644"
+
+    - name: Cleanup old backups (older than {{ retention_days }} days)
+      file:
+        path: "{{ backup_base_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ lookup('fileglob', backup_base_dir + '/*', wantlist=True) | map('basename') | list }}"
+      when: >
+        (ansible_date_time.epoch | int) - (item | int) > (retention_days | int * 86400)
+      ignore_errors: true
+
+    - name: Display backup information
+      debug:
+        msg:
+          - "Apache configuration backup completed"
+          - "Backup location: {{ backup_dir.path }}"
+          - "Config directory: {{ apache_conf_dir }}"
+          - "Service name: {{ httpd_service_name }}"
+

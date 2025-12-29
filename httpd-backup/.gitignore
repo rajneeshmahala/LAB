@@ -1,0 +1,33 @@
+# Ansible
+*.retry
+.vault_pass
+ansible.log
+
+# Backup files
+*.vma.gz
+*.vma.zst
+*.vma.lzo
+*.tar.gz
+
+# Sensitive data
+*secrets*.yml
+*password*.yml
+*vault*.yml
+group_vars/*/vault.yml
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# Python
+__pycache__/
+*.pyc
+.python-version
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+

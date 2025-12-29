@@ -1,64 +1,137 @@
-# Copilot Instructions
+# Terraform Proxmox Ubuntu Single-Node Cluster VM
 
-This is a Terraform project for provisioning Ubuntu VMs on Proxmox infrastructure.
+This Terraform configuration creates an Ubuntu 24.04 virtual machine on Proxmox infrastructure with a single-node K3s Kubernetes cluster.
 
-## Project Overview
+## Prerequisites
 
-- **Language**: HCL (HashiCorp Configuration Language)
-- **Purpose**: Infrastructure as Code for Proxmox VM deployment
-- **Key Components**: Provider configuration, variables, VM resources, and networking
+1. **Terraform** (v1.0+) - [Install](https://www.terraform.io/downloads)
+2. **Proxmox Server** with API access
+3. **Proxmox API Token** - Create a user and token for Terraform
+4. **Ubuntu Cloud-Init Template** - Pre-configured in Proxmox
 
-## Key Files & Structure
+## Setup Instructions
 
-- `main.tf` - Primary VM and resource definitions
-- `provider.tf` - Proxmox provider authentication and configuration
-- `variables.tf` - Input variables for VM customization
-- `outputs.tf` - Output values for VM details
-- `terraform.tfvars` - Variable values (excluded from version control)
+### 1. Create Proxmox API Token
 
-## Essential Workflows
-
-### Initialize Terraform
+On your Proxmox server, create an API token:
 ```bash
+# SSH into Proxmox
+ssh root@proxmox-server
+
+# Create a user (optional, use existing if available)
+pveum user add terraform@pam
+
+# Create a token for the user
+pveum acl modify / -user terraform@pam -role Administrator
+pveum token add terraform@pam terraform --privsep=0
+```
+
+Note the token ID and secret returned by `pveum token add`.
+
+### 2. Prepare Configuration
+
+1. Copy the example variables file:
+```bash
+cp terraform.tfvars.example terraform.tfvars
+```
+
+2. Edit `terraform.tfvars` with your Proxmox details:
+```hcl
+proxmox_api_url      = "https://your-proxmox-ip:8006/api2/json"
+proxmox_api_token_id = "terraform@pam!terraform"
+proxmox_api_token    = "your-token-here"
+proxmox_node         = "pve"  # Your Proxmox node name
+ssh_public_key       = "ssh-rsa AAAAB3NzaC1yc... your-key-here"
+```
+
+3. Upload the cloud-init user data file to Proxmox:
+```bash
+# Create snippets directory on Proxmox if it doesn't exist
+ssh root@your-proxmox-ip "mkdir -p /var/lib/vz/snippets"
+
+# Upload the cloud-init file
+scp snippets/cloud-init-user-data.yml root@your-proxmox-ip:/var/lib/vz/snippets/
+```
+
+4. (Optional) Update VM specifications:
+```hcl
+vm_name      = "my-ubuntu-vm"
+vm_cores     = 4
+vm_memory    = 4096
+vm_disk_size = 64
+```
+
+### 3. Initialize and Deploy
+
+```bash
+# Initialize Terraform
 terraform init
-```
 
-### Validate Configuration
-```bash
+# Validate configuration
 terraform validate
-```
 
-### Plan Deployment
-```bash
+# Plan the deployment
 terraform plan -out=tfplan
-```
 
-### Apply Configuration
-```bash
+# Apply the configuration
 terraform apply tfplan
 ```
 
-### Destroy Resources
+## Outputs
+
+After successful deployment, Terraform outputs:
+- `vm_id` - Proxmox VM ID
+- `vm_name` - VM hostname
+- `vm_node` - Proxmox node location
+- `vm_status` - Current VM status
+
+## Network Configuration
+
+### DHCP (Default)
+VMs are configured for DHCP by default. Check your Proxmox/network for assigned IP.
+
+### Static IP
+To configure static IP, uncomment and modify in `main.tf`:
+```hcl
+ipconfig0 = "ip=192.168.1.100/24,gw=192.168.1.1"
+```
+
+## Cloud-Init Customization
+
+The configuration includes a cloud-init snippet that sets up a single-node K3s Kubernetes cluster on Ubuntu 24.04. The file `snippets/cloud-init-user-data.yml` contains the necessary packages and run commands to install K3s.
+
+To modify the cloud-init script, edit `snippets/cloud-init-user-data.yml` and re-upload it to your Proxmox server:
+
+```bash
+scp snippets/cloud-init-user-data.yml root@your-proxmox-ip:/var/lib/vz/snippets/
+```
+
+For custom user data scripts, you can add additional packages or commands to the file.
+
+## Cleanup
+
+To destroy all resources:
 ```bash
 terraform destroy
 ```
 
-## Project Conventions
+## Troubleshooting
 
-1. **Variables**: All configurable values (VM name, CPU, memory, disk size) are defined in `variables.tf`
-2. **Proxmox Details**: Provider credentials and endpoint are in `provider.tf` using environment variables or `terraform.tfvars`
-3. **Naming**: VM names follow pattern: `ubuntu-vm-{environment}-{index}`
-4. **Cloud-Init**: Ubuntu VMs are provisioned with cloud-init for post-deployment configuration
+### API Connection Failed
+- Verify Proxmox API URL and port (default 8006)
+- Check API token is valid: `pveum token list`
+- Ensure TLS certificate is valid or set `proxmox_tls_insecure = true`
 
-## Integration Points
+### Template Not Found
+- Verify template name exists in Proxmox: `qm template`
+- Template must have cloud-init support
 
-- **Proxmox API**: Communication via Proxmox provider (credentials required)
-- **Cloud-Init**: User data script passed to VMs for initial setup
-- **Local Storage**: VM templates stored in Proxmox local-lvm storage
+### IP Address Not Assigned
+- Check network bridge (`vmbr0`) configuration in Proxmox
+- Verify DHCP server is running on your network
 
-## Common Tasks
+## References
 
-- **Modify VM specs**: Update variables in `variables.tf` or `terraform.tfvars`
-- **Add more VMs**: Add new resource blocks to `main.tf` with unique names
-- **Change storage**: Update `storage_location` variable
-- **Enable SSH**: Ensure cloud-init user data includes SSH key setup
+- [Terraform Proxmox Provider](https://github.com/Telmate/terraform-provider-proxmox)
+- [Proxmox API Documentation](https://pve.proxmox.com/pve-docs/api-viewer/)
+- [Cloud-Init Documentation](https://cloud-init.io/)
